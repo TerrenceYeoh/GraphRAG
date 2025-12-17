@@ -1,0 +1,13 @@
+/.claude
+
+/chroma_db
+/corpus
+/graph_db
+/tests
+/logs
+/outputs
+.python-version
+__pycache__
+
+PLAN.md
+pyproject.toml

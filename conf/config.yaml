@@ -1,0 +1,111 @@
+# Graph RAG Configuration
+
+hydra:
+  job:
+    chdir: false
+
+# Paths
+PATHS:
+  corpus_dir: corpus/raw
+  graph_db_dir: graph_db
+  vector_db_dir: chroma_db
+  logs_dir: logs
+
+# Document Processing
+DOCUMENT:
+  chunk_size: 1500
+  chunk_overlap: 200
+  supported_extensions:
+    - .pdf
+    - .txt
+    - .json
+    - .csv
+    - .md
+
+# Entity Extraction
+EXTRACTION:
+  model: "qwen2.5:14b"
+  embedding_model: "nomic-embed-text"
+  entity_types:
+    # Core entities
+    - Organization        # CPF Board, HDB, IRAS, ministries
+    - Scheme              # CPF LIFE, MediShield Life, ComCare
+    - Grant               # EHG, Family Grant, PSG
+    - Requirement         # Eligibility criteria, conditions
+    - MonetaryAmount      # $80,000, 17%, income ceilings
+    - AgeGroup            # 55 and above, seniors, first-timers
+    # Secondary entities
+    - Account             # OA, SA, MA, RA
+    - Property            # BTO, resale flat, HDB, private
+    - Document            # Application form, tax return
+    - Process             # Application, balloting, assessment
+    - Duration            # 5 years MOP, 55 months
+    - Concept             # Annual value, retirement sum, tax relief
+  max_entities_per_chunk: 20
+  max_relations_per_chunk: 25
+  temperature: 0.0
+  batch_size: 5
+
+# Knowledge Graph
+GRAPH:
+  backend: "networkx"
+  persist_format: "json"
+  # Neo4j settings (if using neo4j backend)
+  neo4j_uri: "bolt://localhost:7687"
+  neo4j_user: "neo4j"
+  neo4j_password: "password"
+
+# Community Detection
+COMMUNITY:
+  algorithm: "leiden"
+  max_levels: 2
+  min_community_size: 3
+  resolution: 1.0
+  random_seed: 42
+
+# Community Summarization
+SUMMARIZATION:
+  model: "qwen2.5:14b"
+  max_tokens: 500
+  temperature: 0.3
+  include_entity_descriptions: true
+  include_relationships: true
+
+# Retrieval
+RETRIEVAL:
+  # Local search (entity-based)
+  local_search_hops: 2
+  local_max_entities: 25
+  local_max_edges: 50
+  local_include_community_context: true
+
+  # Global search (community-based)
+  global_top_communities: 8
+  global_map_reduce: true
+
+  # Hybrid
+  default_mode: "auto"  # auto, local, global
+  auto_threshold: 0.7   # Confidence threshold for mode selection
+
+# LLM Generation
+GENERATION:
+  model: "qwen2.5:14b"
+  temperature: 0.5
+  max_tokens: 1024
+  top_k: 5
+
+# API Server
+SERVER:
+  host: "0.0.0.0"
+  backend_port: 8001
+  frontend_port: 7861
+  # CORS settings - restrict in production
+  cors_origins:
+    - "http://localhost:7861"
+    - "http://127.0.0.1:7861"
+    - "http://localhost:3000"  # For React dev servers
+
+# Logging
+LOGGING:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
