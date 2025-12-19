@@ -253,16 +253,27 @@ class CommunityDetector:
         for comm in lower_communities:
             comm_graph.add_node(comm.id)
 
-        for i, comm1 in enumerate(lower_communities):
-            for comm2 in lower_communities[i + 1 :]:
-                # Count edges between communities
-                edge_count = 0
-                for node1 in comm1.entity_ids:
-                    for node2 in comm2.entity_ids:
-                        if kg.graph.has_edge(node1, node2):
-                            edge_count += 1
-                if edge_count > 0:
-                    comm_graph.add_edge(comm1.id, comm2.id, weight=edge_count)
+        # Build node-to-community mapping for O(1) lookups
+        node_to_comm: dict[str, str] = {}
+        for comm in lower_communities:
+            for node_id in comm.entity_ids:
+                node_to_comm[node_id] = comm.id
+
+        # Count inter-community edges in O(E) by iterating edges once
+        edge_counts: dict[tuple[str, str], int] = {}
+        for source, target in kg.graph.edges():
+            comm1_id = node_to_comm.get(source)
+            comm2_id = node_to_comm.get(target)
+
+            # Only count edges between different communities
+            if comm1_id and comm2_id and comm1_id != comm2_id:
+                # Normalize edge key (smaller id first) to avoid duplicates
+                edge_key = (min(comm1_id, comm2_id), max(comm1_id, comm2_id))
+                edge_counts[edge_key] = edge_counts.get(edge_key, 0) + 1
+
+        # Add edges to community graph
+        for (comm1_id, comm2_id), weight in edge_counts.items():
+            comm_graph.add_edge(comm1_id, comm2_id, weight=weight)
 
         # Run Louvain on community graph
         try:
