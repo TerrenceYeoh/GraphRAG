@@ -249,17 +249,19 @@ class GraphRetriever:
             neighbors = self.kg.get_neighbors(node, hops=self.local_search_hops)
             all_relevant_nodes.update(neighbors[: self.local_max_entities])
 
-        # Limit total nodes
+        # Limit total nodes efficiently
         if len(all_relevant_nodes) > self.local_max_entities:
             # Prioritize matched nodes and their direct neighbors
-            degrees = {n: self.kg.graph.degree(n) for n in all_relevant_nodes}
-            all_relevant_nodes = set(
-                sorted(
-                    all_relevant_nodes,
-                    key=lambda x: (x in matched_nodes, degrees[x]),
-                    reverse=True,
-                )[: self.local_max_entities]
-            )
+            # Use set for O(1) membership check in sort key
+            matched_set = set(matched_nodes)
+            # Compute degrees once and sort
+            nodes_with_priority = [
+                (node, node in matched_set, self.kg.graph.degree(node))
+                for node in all_relevant_nodes
+            ]
+            # Sort by (is_matched, degree) descending and take top N
+            nodes_with_priority.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            all_relevant_nodes = {n[0] for n in nodes_with_priority[: self.local_max_entities]}
 
         # Build context from subgraph
         subgraph = self.kg.get_subgraph(list(all_relevant_nodes), hops=0)
