@@ -5,20 +5,14 @@ Constructs a NetworkX graph from extracted entities and relationships.
 Provides persistence and loading functionality.
 """
 
-import json
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Iterator
 
 import networkx as nx
 from loguru import logger
 
-from src.utils.graph_utils import (
-    Entity,
-    Relationship,
-    normalize_entity_name,
-    save_json,
-    load_json,
-)
+from src.utils.graph_utils import (Entity, Relationship, load_json,
+                                   normalize_entity_name, save_json)
 
 
 class KnowledgeGraph:
@@ -60,7 +54,9 @@ class KnowledgeGraph:
             # Merge with existing entity
             existing = self._entity_map[node_id]
             if entity.description and entity.description not in existing.description:
-                existing.description = f"{existing.description} {entity.description}".strip()
+                existing.description = (
+                    f"{existing.description} {entity.description}".strip()
+                )
             existing.attributes.update(entity.attributes)
         else:
             self._entity_map[node_id] = entity
@@ -126,7 +122,9 @@ class KnowledgeGraph:
         """Add multiple entities to the graph."""
         for entity in entities:
             self.add_entity(entity)
-        logger.info(f"Added {len(entities)} entities, graph now has {self.num_nodes} nodes")
+        logger.info(
+            f"Added {len(entities)} entities, graph now has {self.num_nodes} nodes"
+        )
 
     def add_relationships(self, relationships: list[Relationship]) -> None:
         """Add multiple relationships to the graph."""
@@ -134,7 +132,9 @@ class KnowledgeGraph:
         for rel in relationships:
             if self.add_relationship(rel):
                 added += 1
-        logger.info(f"Added {added}/{len(relationships)} relationships, graph now has {self.num_edges} edges")
+        logger.info(
+            f"Added {added}/{len(relationships)} relationships, graph now has {self.num_edges} edges"
+        )
 
     def get_entity(self, name: str) -> Entity | None:
         """Get entity by name."""
@@ -284,7 +284,9 @@ class KnowledgeGraph:
         entity_map_data = {k: v.to_dict() for k, v in self._entity_map.items()}
         save_json(entity_map_data, path / "entity_map.json")
 
-        logger.info(f"Saved graph to {path}: {self.num_nodes} nodes, {self.num_edges} edges")
+        logger.info(
+            f"Saved graph to {path}: {self.num_nodes} nodes, {self.num_edges} edges"
+        )
 
     @classmethod
     def load(cls, path: Path) -> "KnowledgeGraph":
@@ -323,9 +325,13 @@ class KnowledgeGraph:
         entity_map_path = path / "entity_map.json"
         if entity_map_path.exists():
             entity_map_data = load_json(entity_map_path)
-            kg._entity_map = {k: Entity.from_dict(v) for k, v in entity_map_data.items()}
+            kg._entity_map = {
+                k: Entity.from_dict(v) for k, v in entity_map_data.items()
+            }
 
-        logger.info(f"Loaded graph from {path}: {kg.num_nodes} nodes, {kg.num_edges} edges")
+        logger.info(
+            f"Loaded graph from {path}: {kg.num_nodes} nodes, {kg.num_edges} edges"
+        )
         return kg
 
     def to_context_string(self, max_nodes: int = 20, max_edges: int = 30) -> str:
@@ -373,7 +379,8 @@ class KnowledgeGraph:
             "num_nodes": self.num_nodes,
             "num_edges": self.num_edges,
             "num_connected_components": len(self.get_connected_components()),
-            "avg_degree": sum(dict(self.graph.degree()).values()) / max(self.num_nodes, 1),
+            "avg_degree": sum(dict(self.graph.degree()).values())
+            / max(self.num_nodes, 1),
             "density": nx.density(self.graph) if self.num_nodes > 0 else 0,
             "entity_types": self._count_entity_types(),
             "relationship_types": self._count_relationship_types(),

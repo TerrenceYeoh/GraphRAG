@@ -8,24 +8,16 @@ text into structured knowledge graph elements.
 
 import json
 import re
-from typing import Optional
 from pathlib import Path
 
 from langchain_ollama import OllamaLLM
 from loguru import logger
 from tqdm import tqdm
 
-from src.utils.graph_utils import (
-    Entity,
-    Relationship,
-    ExtractionResult,
-    merge_entities,
-    merge_relationships,
-    save_json,
-    load_json,
-    strip_think_tags,
-)
-
+from src.utils.graph_utils import (Entity, ExtractionResult, Relationship,
+                                   load_json, merge_entities,
+                                   merge_relationships, save_json,
+                                   strip_think_tags)
 
 ENTITY_EXTRACTION_PROMPT = """You are an expert at extracting structured information from text.
 
@@ -302,7 +294,9 @@ class EntityExtractor:
                     relationship = Relationship(
                         source=source,
                         target=target,
-                        relation_type=rel_data.get("relation_type", "RELATED_TO").strip().upper(),
+                        relation_type=rel_data.get("relation_type", "RELATED_TO")
+                        .strip()
+                        .upper(),
                         description=rel_data.get("description", "").strip(),
                         source_chunk=chunk_id,
                     )
@@ -359,7 +353,9 @@ class EntityExtractor:
 
         return results
 
-    def merge_results(self, results: list[ExtractionResult]) -> tuple[list[Entity], list[Relationship]]:
+    def merge_results(
+        self, results: list[ExtractionResult]
+    ) -> tuple[list[Entity], list[Relationship]]:
         """
         Merge extraction results, deduplicating entities and relationships.
 

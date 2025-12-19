@@ -32,8 +32,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
 from typing import Generator
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -51,7 +51,7 @@ PDF_DIR = Path(__file__).parent.parent / "corpus" / "pdfs"
 # Request settings
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
@@ -71,19 +71,21 @@ class ScraperConfig:
     download_documents: bool = True
     parse_faqs: bool = True
     allowed_domains: set[str] = field(default_factory=set)
-    excluded_patterns: list[str] = field(default_factory=lambda: [
-        r"/search",
-        r"/login",
-        r"/register",
-        r"/logout",
-        r"/api/",
-        r"/cdn-cgi/",
-        r"\?",  # Query strings often lead to duplicates
-        r"#",   # Anchors
-        r"/print/",
-        r"/share/",
-        r"/email/",
-    ])
+    excluded_patterns: list[str] = field(
+        default_factory=lambda: [
+            r"/search",
+            r"/login",
+            r"/register",
+            r"/logout",
+            r"/api/",
+            r"/cdn-cgi/",
+            r"\?",  # Query strings often lead to duplicates
+            r"#",  # Anchors
+            r"/print/",
+            r"/share/",
+            r"/email/",
+        ]
+    )
 
 
 @dataclass
@@ -169,6 +171,7 @@ PHASE_3_SEEDS = {
 # HTTP utilities
 # =============================================================================
 
+
 class RateLimiter:
     """Simple rate limiter for HTTP requests."""
 
@@ -188,7 +191,9 @@ class RateLimiter:
         self.last_request_time[domain] = time.time()
 
 
-def fetch_url(url: str, rate_limiter: RateLimiter | None = None) -> requests.Response | None:
+def fetch_url(
+    url: str, rate_limiter: RateLimiter | None = None
+) -> requests.Response | None:
     """
     Fetch a URL with error handling and optional rate limiting.
 
@@ -213,7 +218,9 @@ def fetch_url(url: str, rate_limiter: RateLimiter | None = None) -> requests.Res
         return None
 
 
-def download_file(url: str, output_path: Path, rate_limiter: RateLimiter | None = None) -> bool:
+def download_file(
+    url: str, output_path: Path, rate_limiter: RateLimiter | None = None
+) -> bool:
     """
     Download a file (PDF, etc.) to disk.
 
@@ -238,7 +245,9 @@ def download_file(url: str, output_path: Path, rate_limiter: RateLimiter | None 
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        logger.info(f"Downloaded: {output_path.name} ({output_path.stat().st_size / 1024:.1f} KB)")
+        logger.info(
+            f"Downloaded: {output_path.name} ({output_path.stat().st_size / 1024:.1f} KB)"
+        )
         return True
 
     except Exception as e:
@@ -249,6 +258,7 @@ def download_file(url: str, output_path: Path, rate_limiter: RateLimiter | None 
 # =============================================================================
 # HTML parsing utilities
 # =============================================================================
+
 
 def extract_page_data(html: str, url: str, category: str) -> PageData:
     """
@@ -265,25 +275,37 @@ def extract_page_data(html: str, url: str, category: str) -> PageData:
     soup = BeautifulSoup(html, "html.parser")
 
     # Remove unwanted elements
-    for tag in soup.find_all([
-        "script", "style", "nav", "footer", "header",
-        "aside", "iframe", "noscript", "svg", "form"
-    ]):
+    for tag in soup.find_all(
+        [
+            "script",
+            "style",
+            "nav",
+            "footer",
+            "header",
+            "aside",
+            "iframe",
+            "noscript",
+            "svg",
+            "form",
+        ]
+    ):
         tag.decompose()
 
     # Remove cookie banners, modals, etc.
-    for tag in soup.find_all(class_=re.compile(
-        r"cookie|modal|popup|banner|advertisement|sidebar|menu|nav", re.I
-    )):
+    for tag in soup.find_all(
+        class_=re.compile(
+            r"cookie|modal|popup|banner|advertisement|sidebar|menu|nav", re.I
+        )
+    ):
         tag.decompose()
 
     # Find main content area
     main_content = (
-        soup.find("main") or
-        soup.find("article") or
-        soup.find(id=re.compile(r"content|main", re.I)) or
-        soup.find(class_=re.compile(r"content|main|article", re.I)) or
-        soup.find("body")
+        soup.find("main")
+        or soup.find("article")
+        or soup.find(id=re.compile(r"content|main", re.I))
+        or soup.find(class_=re.compile(r"content|main|article", re.I))
+        or soup.find("body")
     )
 
     if not main_content:
@@ -326,10 +348,22 @@ def extract_text_chunks(content: BeautifulSoup) -> list[str]:
     """Extract clean text chunks from content."""
     chunks = []
 
-    for element in content.find_all([
-        "h1", "h2", "h3", "h4", "h5", "h6",
-        "p", "ul", "ol", "table", "blockquote", "dl"
-    ]):
+    for element in content.find_all(
+        [
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "p",
+            "ul",
+            "ol",
+            "table",
+            "blockquote",
+            "dl",
+        ]
+    ):
         text = element.get_text(strip=True)
         if not text or len(text) < 15:
             continue
@@ -395,12 +429,18 @@ def extract_faqs(soup: BeautifulSoup) -> list[dict[str, str]]:
 
     # Pattern 1: Accordion/collapsible FAQ sections
     # Common classes: accordion, faq, collapse, expandable
-    faq_containers = soup.find_all(class_=re.compile(r"faq|accordion|collapse|qa", re.I))
+    faq_containers = soup.find_all(
+        class_=re.compile(r"faq|accordion|collapse|qa", re.I)
+    )
 
     for container in faq_containers:
         # Look for question-answer pairs
-        questions = container.find_all(class_=re.compile(r"question|header|title|toggle", re.I))
-        answers = container.find_all(class_=re.compile(r"answer|content|body|panel", re.I))
+        questions = container.find_all(
+            class_=re.compile(r"question|header|title|toggle", re.I)
+        )
+        answers = container.find_all(
+            class_=re.compile(r"answer|content|body|panel", re.I)
+        )
 
         for q, a in zip(questions, answers):
             q_text = q.get_text(strip=True)
@@ -416,7 +456,27 @@ def extract_faqs(soup: BeautifulSoup) -> list[dict[str, str]]:
             q_text = dt.get_text(strip=True)
             a_text = dd.get_text(strip=True)
             # Check if it looks like a question
-            if q_text and a_text and ("?" in q_text or q_text.lower().startswith(("how", "what", "when", "where", "why", "who", "can", "do", "is", "are"))):
+            if (
+                q_text
+                and a_text
+                and (
+                    "?" in q_text
+                    or q_text.lower().startswith(
+                        (
+                            "how",
+                            "what",
+                            "when",
+                            "where",
+                            "why",
+                            "who",
+                            "can",
+                            "do",
+                            "is",
+                            "are",
+                        )
+                    )
+                )
+            ):
                 faqs.append({"question": q_text, "answer": a_text})
 
     # Pattern 3: Headers followed by content
@@ -432,10 +492,12 @@ def extract_faqs(soup: BeautifulSoup) -> list[dict[str, str]]:
                     answer_parts.append(sibling.get_text(strip=True))
 
             if answer_parts:
-                faqs.append({
-                    "question": header_text,
-                    "answer": " ".join(answer_parts)[:1000]  # Limit length
-                })
+                faqs.append(
+                    {
+                        "question": header_text,
+                        "answer": " ".join(answer_parts)[:1000],  # Limit length
+                    }
+                )
 
     # Deduplicate FAQs
     seen = set()
@@ -541,7 +603,10 @@ def convert_table_to_text(table: BeautifulSoup) -> str:
 # Sitemap parsing
 # =============================================================================
 
-def parse_sitemap(sitemap_url: str, rate_limiter: RateLimiter | None = None) -> list[str]:
+
+def parse_sitemap(
+    sitemap_url: str, rate_limiter: RateLimiter | None = None
+) -> list[str]:
     """
     Parse sitemap.xml and extract all URLs.
 
@@ -616,6 +681,7 @@ def filter_sitemap_urls(urls: list[str], config: ScraperConfig) -> list[str]:
 # =============================================================================
 # Spider (recursive crawler)
 # =============================================================================
+
 
 class Spider:
     """Recursive web crawler with depth limiting."""
@@ -724,12 +790,15 @@ class Spider:
                         self.visited.add(self.normalize_url(link))
                         queue.append((link, depth + 1))
 
-        logger.info(f"Spider finished: {pages_scraped} pages scraped, {len(self.document_urls)} documents found")
+        logger.info(
+            f"Spider finished: {pages_scraped} pages scraped, {len(self.document_urls)} documents found"
+        )
 
 
 # =============================================================================
 # Document downloader
 # =============================================================================
+
 
 def download_documents(
     document_urls: set[str],
@@ -762,6 +831,7 @@ def download_documents(
         if output_path.exists():
             # Add hash to make unique
             import hashlib
+
             url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
             stem = output_path.stem
             suffix = output_path.suffix
@@ -776,6 +846,7 @@ def download_documents(
 # =============================================================================
 # Output utilities
 # =============================================================================
+
 
 def sanitize_filename(url: str) -> str:
     """Create a safe filename from URL."""
@@ -815,6 +886,7 @@ def save_page_data(page_data: PageData, output_dir: Path) -> bool:
 # =============================================================================
 # Main entry points
 # =============================================================================
+
 
 def scrape_with_spider(
     seeds: dict[str, list[str]],

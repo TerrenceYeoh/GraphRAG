@@ -12,9 +12,9 @@ from langchain_ollama import OllamaLLM
 from loguru import logger
 from tqdm import tqdm
 
-from src.utils.graph_utils import Community, save_json, load_json, strip_think_tags
 from src.graph_builder import KnowledgeGraph
-
+from src.utils.graph_utils import (Community, load_json, save_json,
+                                   strip_think_tags)
 
 COMMUNITY_SUMMARY_PROMPT = """You are an expert at summarizing information about groups of related entities.
 
@@ -142,7 +142,9 @@ class CommunitySummarizer:
             relationships.sort(key=lambda x: x["weight"], reverse=True)
 
             for rel in relationships[:max_relationships]:
-                lines.append(f"- ({rel['source']}) --[{rel['type']}]--> ({rel['target']})")
+                lines.append(
+                    f"- ({rel['source']}) --[{rel['type']}]--> ({rel['target']})"
+                )
 
             if len(relationships) > max_relationships:
                 lines.append(

@@ -2,9 +2,10 @@
 
 import json
 import re
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
-from dataclasses import dataclass, field, asdict
+
 from loguru import logger
 
 
@@ -42,7 +43,10 @@ class Entity:
     def __eq__(self, other):
         if not isinstance(other, Entity):
             return False
-        return self.name.lower() == other.name.lower() and self.type.lower() == other.type.lower()
+        return (
+            self.name.lower() == other.name.lower()
+            and self.type.lower() == other.type.lower()
+        )
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -65,7 +69,9 @@ class Relationship:
     attributes: dict = field(default_factory=dict)
 
     def __hash__(self):
-        return hash((self.source.lower(), self.target.lower(), self.relation_type.lower()))
+        return hash(
+            (self.source.lower(), self.target.lower(), self.relation_type.lower())
+        )
 
     def __eq__(self, other):
         if not isinstance(other, Relationship):
@@ -105,7 +111,9 @@ class ExtractionResult:
     def from_dict(cls, data: dict) -> "ExtractionResult":
         return cls(
             entities=[Entity.from_dict(e) for e in data.get("entities", [])],
-            relationships=[Relationship.from_dict(r) for r in data.get("relationships", [])],
+            relationships=[
+                Relationship.from_dict(r) for r in data.get("relationships", [])
+            ],
             source_text=data.get("source_text", ""),
             chunk_id=data.get("chunk_id", ""),
         )
@@ -161,7 +169,9 @@ def merge_entities(entities: list[Entity]) -> list[Entity]:
             existing = entity_map[key]
             # Merge descriptions
             if entity.description and entity.description not in existing.description:
-                existing.description = f"{existing.description} {entity.description}".strip()
+                existing.description = (
+                    f"{existing.description} {entity.description}".strip()
+                )
             # Merge attributes
             existing.attributes.update(entity.attributes)
         else:
@@ -191,7 +201,9 @@ def merge_relationships(relationships: list[Relationship]) -> list[Relationship]
             existing = rel_map[key]
             existing.weight += rel.weight
             if rel.description and rel.description not in existing.description:
-                existing.description = f"{existing.description} {rel.description}".strip()
+                existing.description = (
+                    f"{existing.description} {rel.description}".strip()
+                )
         else:
             rel_map[key] = Relationship(
                 source=rel.source,

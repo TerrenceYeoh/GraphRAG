@@ -15,10 +15,12 @@ try:
     from graspologic.partition import hierarchical_leiden
 except ImportError:
     hierarchical_leiden = None
-    logger.warning("graspologic not installed, falling back to NetworkX community detection")
+    logger.warning(
+        "graspologic not installed, falling back to NetworkX community detection"
+    )
 
-from src.utils.graph_utils import Community, save_json, load_json
 from src.graph_builder import KnowledgeGraph
+from src.utils.graph_utils import Community, load_json, save_json
 
 
 class CommunityDetector:
@@ -58,7 +60,9 @@ class CommunityDetector:
             Dictionary mapping community_id to Community object
         """
         if kg.num_nodes < self.min_community_size:
-            logger.warning(f"Graph too small ({kg.num_nodes} nodes) for community detection")
+            logger.warning(
+                f"Graph too small ({kg.num_nodes} nodes) for community detection"
+            )
             return self._create_single_community(kg)
 
         if hierarchical_leiden is not None:
@@ -131,7 +135,9 @@ class CommunityDetector:
             logger.info(f"Detected {len(communities)} communities using Leiden")
 
         except Exception as e:
-            logger.error(f"Failed to parse Leiden results: {e}, falling back to Louvain")
+            logger.error(
+                f"Failed to parse Leiden results: {e}, falling back to Louvain"
+            )
             return self._detect_with_louvain(kg)
 
         return communities
@@ -323,7 +329,9 @@ class CommunityDetector:
                 node_degrees.append((node_id, kg.graph.degree(node_id)))
 
         # Get dominant type
-        dominant_type = max(type_counts.items(), key=lambda x: x[1])[0] if type_counts else "Mixed"
+        dominant_type = (
+            max(type_counts.items(), key=lambda x: x[1])[0] if type_counts else "Mixed"
+        )
 
         # Get top 3 nodes by degree
         top_nodes = sorted(node_degrees, key=lambda x: x[1], reverse=True)[:3]

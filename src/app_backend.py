@@ -11,16 +11,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, Optional
 
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_ollama import OllamaLLM
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, Field
-import uvicorn
 
-from src.graph_builder import KnowledgeGraph
 from src.community_detection import load_communities
+from src.graph_builder import KnowledgeGraph
 from src.graph_retriever import GraphRetriever, create_retriever
 from src.utils.graph_utils import Community
 
@@ -68,7 +68,9 @@ async def lifespan(app: FastAPI):
     # Load knowledge graph
     try:
         state.kg = KnowledgeGraph.load(graph_db_dir)
-        logger.info(f"Loaded knowledge graph: {state.kg.num_nodes} nodes, {state.kg.num_edges} edges")
+        logger.info(
+            f"Loaded knowledge graph: {state.kg.num_nodes} nodes, {state.kg.num_edges} edges"
+        )
     except Exception as e:
         logger.error(f"Failed to load knowledge graph: {e}")
         state.kg = KnowledgeGraph()
@@ -291,7 +293,9 @@ async def query(request: QueryRequest):
         "mode": search_mode,
     }
     if search_mode == "local":
-        context_summary["matched_entities"] = retrieval_result.get("matched_entities", [])
+        context_summary["matched_entities"] = retrieval_result.get(
+            "matched_entities", []
+        )
         context_summary["total_nodes"] = retrieval_result.get("total_nodes", 0)
         context_summary["total_edges"] = retrieval_result.get("total_edges", 0)
     else:
@@ -352,7 +356,11 @@ async def list_communities():
                 "level": comm.level,
                 "title": comm.title,
                 "num_entities": len(comm.entity_ids),
-                "summary": comm.summary[:300] + "..." if len(comm.summary) > 300 else comm.summary,
+                "summary": (
+                    comm.summary[:300] + "..."
+                    if len(comm.summary) > 300
+                    else comm.summary
+                ),
             }
         )
 

@@ -64,7 +64,9 @@ def find_empty_cache_files(cache_dir: Path) -> set[str]:
     return empty_chunks
 
 
-def delete_cache_files(cache_dir: Path, chunk_ids: set[str], dry_run: bool = False) -> int:
+def delete_cache_files(
+    cache_dir: Path, chunk_ids: set[str], dry_run: bool = False
+) -> int:
     """Delete cache files for the specified chunk IDs."""
     deleted = 0
 

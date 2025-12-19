@@ -11,21 +11,23 @@ Main script to build the knowledge graph index from documents:
 """
 
 import hashlib
+import json
 import sys
 from pathlib import Path
 
+import fitz  # PyMuPDF
 import hydra
+import pandas as pd
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from loguru import logger
 from omegaconf import DictConfig
-import fitz  # PyMuPDF
-import pandas as pd
-import json
 
-from src.entity_extraction import EntityExtractor, create_extractor
-from src.graph_builder import KnowledgeGraph, build_graph_from_extractions
-from src.community_detection import CommunityDetector, create_detector, save_communities
-from src.community_summarizer import CommunitySummarizer, create_summarizer, save_community_summaries
+from src.community_detection import (create_detector,
+                                     save_communities)
+from src.community_summarizer import (create_summarizer,
+                                      save_community_summaries)
+from src.entity_extraction import create_extractor
+from src.graph_builder import build_graph_from_extractions
 from src.utils.graph_utils import save_json
 
 
@@ -116,7 +118,9 @@ def extract_text_from_txt(path: Path) -> str:
         return ""
 
 
-def load_documents(corpus_dir: Path, extensions: list[str]) -> list[tuple[str, str, str]]:
+def load_documents(
+    corpus_dir: Path, extensions: list[str]
+) -> list[tuple[str, str, str]]:
     """
     Load documents from corpus directory.
 
@@ -222,7 +226,9 @@ def main(cfg: DictConfig) -> None:
 
     # Merge all extractions
     entities, relationships = extractor.merge_results(extraction_results)
-    logger.info(f"Extracted {len(entities)} entities, {len(relationships)} relationships")
+    logger.info(
+        f"Extracted {len(entities)} entities, {len(relationships)} relationships"
+    )
 
     # Save extraction results
     save_json(

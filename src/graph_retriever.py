@@ -9,13 +9,13 @@ Implements local and global search strategies for Graph RAG:
 from pathlib import Path
 from typing import Literal
 
-from langchain_ollama import OllamaLLM, OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from loguru import logger
 
-from src.utils.graph_utils import Community, normalize_entity_name, strip_think_tags
 from src.graph_builder import KnowledgeGraph
-
+from src.utils.graph_utils import (Community, normalize_entity_name,
+                                   strip_think_tags)
 
 # Prompt for extracting entities from user query
 QUERY_ENTITY_EXTRACTION_PROMPT = """Extract the key entities mentioned in this question.
@@ -140,7 +140,9 @@ class GraphRetriever:
                 embedding=self.embeddings,
                 metadatas=metadatas,
                 ids=ids,
-                persist_directory=str(self.vector_db_path) if self.vector_db_path else None,
+                persist_directory=(
+                    str(self.vector_db_path) if self.vector_db_path else None
+                ),
                 collection_name="community_summaries",
             )
             logger.info(f"Created community vector store with {len(texts)} summaries")
@@ -236,9 +238,9 @@ class GraphRetriever:
         if not matched_nodes:
             # Fallback: use most connected nodes
             degrees = self.kg.get_node_degrees()
-            matched_nodes = sorted(degrees.keys(), key=lambda x: degrees[x], reverse=True)[
-                : self.local_max_entities // 2
-            ]
+            matched_nodes = sorted(
+                degrees.keys(), key=lambda x: degrees[x], reverse=True
+            )[: self.local_max_entities // 2]
             logger.debug("No direct matches, using top connected nodes")
 
         # Get subgraph around matched nodes
@@ -252,9 +254,11 @@ class GraphRetriever:
             # Prioritize matched nodes and their direct neighbors
             degrees = {n: self.kg.graph.degree(n) for n in all_relevant_nodes}
             all_relevant_nodes = set(
-                sorted(all_relevant_nodes, key=lambda x: (x in matched_nodes, degrees[x]), reverse=True)[
-                    : self.local_max_entities
-                ]
+                sorted(
+                    all_relevant_nodes,
+                    key=lambda x: (x in matched_nodes, degrees[x]),
+                    reverse=True,
+                )[: self.local_max_entities]
             )
 
         # Build context from subgraph
@@ -265,7 +269,9 @@ class GraphRetriever:
         for node_id in matched_nodes[:3]:  # Top 3 matched nodes
             for comm in self.communities.values():
                 if node_id in comm.entity_ids and comm.summary:
-                    community_context += f"\n[Community: {comm.title}]\n{comm.summary[:300]}...\n"
+                    community_context += (
+                        f"\n[Community: {comm.title}]\n{comm.summary[:300]}...\n"
+                    )
                     break
 
         context = subgraph.to_context_string(
@@ -295,7 +301,9 @@ class GraphRetriever:
             Dictionary with retrieved context and metadata
         """
         if not self.community_vectordb:
-            logger.warning("Community vector store not initialized, falling back to local search")
+            logger.warning(
+                "Community vector store not initialized, falling back to local search"
+            )
             return self.local_search(question)
 
         # Search community summaries
