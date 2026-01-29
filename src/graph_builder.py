@@ -369,7 +369,13 @@ class KnowledgeGraph:
             rel_type = data.get("relation_type", "RELATED_TO")
             source_name = self.graph.nodes[source].get("name", source)
             target_name = self.graph.nodes[target].get("name", target)
-            lines.append(f"- ({source_name}) --[{rel_type}]--> ({target_name})")
+            description = data.get("description", "")
+            if description:
+                lines.append(
+                    f"- ({source_name}) --[{rel_type}]--> ({target_name}): {description}"
+                )
+            else:
+                lines.append(f"- ({source_name}) --[{rel_type}]--> ({target_name})")
 
         return "\n".join(lines)
 
