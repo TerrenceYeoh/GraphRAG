@@ -9,6 +9,7 @@ __all__ = [
     "community_detection",
     "community_summarizer",
     "graph_retriever",
+    "langgraph_engine",
     "build_graph_index",
     "app_backend",
     "gradio_frontend",

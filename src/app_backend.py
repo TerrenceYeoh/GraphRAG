@@ -8,12 +8,18 @@ Supports both local and global search modes.
 import re
 import sys
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from langchain_anthropic import ChatAnthropic
 from langchain_ollama import OllamaLLM
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -22,6 +28,7 @@ from pydantic import BaseModel, Field
 from src.community_detection import load_communities
 from src.graph_builder import KnowledgeGraph
 from src.graph_retriever import GraphRetriever, create_retriever
+from src.langgraph_engine import LangGraphEngine, create_langgraph_engine
 from src.utils.graph_utils import Community
 
 
@@ -50,7 +57,8 @@ class AppState:
     kg: KnowledgeGraph | None = None
     communities: dict[str, Community] | None = None
     retriever: GraphRetriever | None = None
-    llm: OllamaLLM | None = None
+    llm: OllamaLLM | ChatAnthropic | None = None
+    langgraph_engine: LangGraphEngine | None = None
 
 
 # Application state instance
@@ -90,14 +98,31 @@ async def lifespan(app: FastAPI):
     # Initialize retriever
     state.retriever = create_retriever(state.kg, state.communities, cfg)
 
-    # Initialize LLM
-    state.llm = OllamaLLM(
-        model=cfg.GENERATION.model,
-        temperature=cfg.GENERATION.temperature,
-        num_predict=cfg.GENERATION.max_tokens,
+    # Initialize LLM based on provider
+    provider = cfg.GENERATION.get("provider", "ollama")
+    if provider == "anthropic":
+        state.llm = ChatAnthropic(
+            model=cfg.GENERATION.model,
+            temperature=cfg.GENERATION.temperature,
+            max_tokens=cfg.GENERATION.max_tokens,
+        )
+        logger.info(f"Using Anthropic model: {cfg.GENERATION.model}")
+    else:
+        state.llm = OllamaLLM(
+            model=cfg.GENERATION.model,
+            temperature=cfg.GENERATION.temperature,
+            num_predict=cfg.GENERATION.max_tokens,
+        )
+        logger.info(f"Using Ollama model: {cfg.GENERATION.model}")
+
+    # Initialize LangGraph engine with conversation memory
+    state.langgraph_engine = create_langgraph_engine(
+        retriever=state.retriever,
+        llm=state.llm,
+        checkpointer_type="memory",  # Use "sqlite" for persistence
     )
 
-    logger.info("Graph RAG backend ready!")
+    logger.info("Graph RAG backend ready with LangGraph conversation memory!")
 
     yield  # Application runs here
 
@@ -129,8 +154,8 @@ class QueryRequest(BaseModel):
     """Request model for query endpoint."""
 
     question: str = Field(..., description="The question to answer")
-    mode: Literal["auto", "local", "global"] = Field(
-        default="auto", description="Search mode"
+    session_id: Optional[str] = Field(
+        default=None, description="Session ID for conversation continuity (null for new session)"
     )
     temperature: Optional[float] = Field(
         default=None, description="LLM temperature (0.0-2.0)"
@@ -144,8 +169,10 @@ class QueryResponse(BaseModel):
     """Response model for query endpoint."""
 
     answer: str
-    search_mode: str
+    session_id: str = Field(description="Session ID for conversation continuity")
+    resolved_mode: str = Field(description="Search mode used (always combined)")
     context_summary: dict
+    message_count: int = Field(description="Total messages in conversation")
     chain_of_thought: Optional[str] = None
     prompt: Optional[str] = None
 
@@ -249,68 +276,71 @@ async def get_graph_stats():
 
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
-    """Query the knowledge graph and generate an answer."""
-    if state.retriever is None or state.llm is None:
+    """Query the knowledge graph and generate an answer with conversation memory."""
+    if state.langgraph_engine is None:
         raise HTTPException(status_code=503, detail="System not initialized")
 
     question = request.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    # Retrieve context
+    # Use LangGraph engine for conversational query
     try:
-        retrieval_result = state.retriever.retrieve(question, mode=request.mode)
-    except Exception as e:
-        logger.error(f"Retrieval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Retrieval failed: {str(e)}")
-
-    context = retrieval_result["context"]
-    search_mode = retrieval_result["mode"]
-
-    # Build prompt
-    prompt = GRAPH_RAG_PROMPT.format(context=context, question=question)
-
-    # Generate answer
-    try:
-        # Update LLM parameters if provided
-        gen_llm = state.llm
-        if request.temperature is not None or request.max_tokens is not None:
-            gen_llm = OllamaLLM(
-                model=cfg.GENERATION.model,
-                temperature=request.temperature or cfg.GENERATION.temperature,
-                num_predict=request.max_tokens or cfg.GENERATION.max_tokens,
-            )
-
-        raw_answer = gen_llm.invoke(prompt)
-        chain_of_thought, answer = extract_chain_of_thought(raw_answer)
-
-    except Exception as e:
-        logger.error(f"Generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
-
-    # Build context summary
-    context_summary = {
-        "mode": search_mode,
-    }
-    if search_mode == "local":
-        context_summary["matched_entities"] = retrieval_result.get(
-            "matched_entities", []
+        result = state.langgraph_engine.query(
+            question=question,
+            session_id=request.session_id,
+            temperature=request.temperature or cfg.GENERATION.temperature,
+            max_tokens=request.max_tokens or cfg.GENERATION.max_tokens,
         )
-        context_summary["total_nodes"] = retrieval_result.get("total_nodes", 0)
-        context_summary["total_edges"] = retrieval_result.get("total_edges", 0)
-    else:
-        context_summary["communities_searched"] = retrieval_result.get(
-            "communities_searched", []
-        )
-        context_summary["total_entities"] = retrieval_result.get("total_entities", 0)
+    except Exception as e:
+        logger.error(f"Query failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+    # Extract chain of thought if present in answer
+    answer = result["answer"]
+    chain_of_thought = None
+    if "<think>" in answer and "</think>" in answer:
+        chain_of_thought, answer = extract_chain_of_thought(answer)
 
     return QueryResponse(
         answer=answer,
-        search_mode=search_mode,
-        context_summary=context_summary,
-        chain_of_thought=chain_of_thought if chain_of_thought else None,
-        prompt=prompt,
+        session_id=result["session_id"],
+        resolved_mode=result.get("resolved_mode", "combined"),
+        context_summary=result.get("context_summary", {}),
+        message_count=result.get("message_count", 0),
+        chain_of_thought=chain_of_thought,
+        prompt=result.get("context", ""),
     )
+
+
+@app.get("/conversation/{session_id}")
+async def get_conversation(session_id: str):
+    """Get conversation history for a session."""
+    if state.langgraph_engine is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    history = state.langgraph_engine.get_conversation_history(session_id)
+
+    return {
+        "session_id": session_id,
+        "messages": history,
+        "message_count": len(history),
+    }
+
+
+@app.delete("/conversation/{session_id}")
+async def clear_conversation(session_id: str):
+    """Clear conversation history for a session (start fresh)."""
+    if state.langgraph_engine is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    state.langgraph_engine.clear_conversation(session_id)
+
+    return {
+        "session_id": session_id,
+        "status": "cleared",
+        "message": "Start a new conversation with the same or new session_id",
+    }
 
 
 @app.get("/entities")
