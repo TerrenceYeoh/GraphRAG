@@ -124,29 +124,41 @@ def load_documents(
     """
     Load documents from corpus directory.
 
+    Documents are sorted alphabetically by path for consistent ordering.
+    This ensures cached documents (e.g., CPF, HDB, IRAS) are processed
+    before newer documents (e.g., MOH, MOM).
+
     Returns:
         List of (doc_id, source_path, text) tuples
     """
     documents = []
 
+    # Collect all file paths first, then sort for consistent ordering
+    all_files = []
     for ext in extensions:
-        for file_path in corpus_dir.rglob(f"*{ext}"):
-            # Extract text based on file type
-            if ext == ".pdf":
-                text = extract_text_from_pdf(file_path)
-            elif ext == ".json":
-                text = extract_text_from_json(file_path)
-            elif ext == ".csv":
-                text = extract_text_from_csv(file_path)
-            elif ext in [".txt", ".md"]:
-                text = extract_text_from_txt(file_path)
-            else:
-                continue
+        all_files.extend(corpus_dir.rglob(f"*{ext}"))
 
-            if text.strip():
-                doc_id = hashlib.md5(str(file_path).encode()).hexdigest()[:12]
-                documents.append((doc_id, str(file_path), text))
-                logger.debug(f"Loaded {file_path}: {len(text)} chars")
+    # Sort alphabetically by path for deterministic processing order
+    all_files.sort(key=lambda p: str(p).lower())
+
+    for file_path in all_files:
+        ext = file_path.suffix.lower()
+        # Extract text based on file type
+        if ext == ".pdf":
+            text = extract_text_from_pdf(file_path)
+        elif ext == ".json":
+            text = extract_text_from_json(file_path)
+        elif ext == ".csv":
+            text = extract_text_from_csv(file_path)
+        elif ext in [".txt", ".md"]:
+            text = extract_text_from_txt(file_path)
+        else:
+            continue
+
+        if text.strip():
+            doc_id = hashlib.md5(str(file_path).encode()).hexdigest()[:12]
+            documents.append((doc_id, str(file_path), text))
+            logger.debug(f"Loaded {file_path}: {len(text)} chars")
 
     logger.info(f"Loaded {len(documents)} documents from {corpus_dir}")
     return documents
