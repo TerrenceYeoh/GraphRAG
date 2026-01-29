@@ -8,7 +8,7 @@ of related entity clusters.
 
 from pathlib import Path
 
-from langchain_ollama import OllamaLLM
+import ollama
 from loguru import logger
 from tqdm import tqdm
 
@@ -16,7 +16,8 @@ from src.graph_builder import KnowledgeGraph
 from src.utils.graph_utils import (Community, load_json, save_json,
                                    strip_think_tags)
 
-COMMUNITY_SUMMARY_PROMPT = """You are an expert at summarizing information about groups of related entities.
+COMMUNITY_SUMMARY_PROMPT = """/no_think
+You are an expert at summarizing information about groups of related entities.
 
 Given the following entities and their relationships, write a comprehensive summary that:
 1. Identifies the main theme or topic of this group
@@ -35,6 +36,7 @@ SUMMARY:"""
 class CommunitySummarizer:
     """
     Generates summaries for communities using LLM.
+    Supports caching to enable resumable summarization.
     """
 
     def __init__(
@@ -44,6 +46,7 @@ class CommunitySummarizer:
         temperature: float = 0.3,
         include_entity_descriptions: bool = True,
         include_relationships: bool = True,
+        cache_dir: Path | None = None,
     ):
         """
         Initialize community summarizer.
@@ -54,20 +57,22 @@ class CommunitySummarizer:
             temperature: LLM temperature
             include_entity_descriptions: Whether to include entity descriptions in context
             include_relationships: Whether to include relationships in context
+            cache_dir: Directory for caching summaries (enables resume on interrupt)
         """
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.include_entity_descriptions = include_entity_descriptions
         self.include_relationships = include_relationships
+        self.cache_dir = Path(cache_dir) if cache_dir else None
 
-        self.llm = OllamaLLM(
-            model=model,
-            temperature=temperature,
-            num_predict=max_tokens,
-        )
+        # Create cache directory if specified
+        if self.cache_dir:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Initialized CommunitySummarizer with model: {model}")
+        if self.cache_dir:
+            logger.info(f"Summary caching enabled: {self.cache_dir}")
 
     def _build_community_context(
         self,
@@ -153,10 +158,37 @@ class CommunitySummarizer:
 
         return "\n".join(lines)
 
+    def _get_cache_path(self, community_id: str) -> Path | None:
+        """Get cache file path for a community."""
+        if not self.cache_dir:
+            return None
+        return self.cache_dir / f"{community_id}.json"
+
+    def _load_from_cache(self, community_id: str) -> str | None:
+        """Load summary from cache if available."""
+        cache_path = self._get_cache_path(community_id)
+        if cache_path and cache_path.exists():
+            try:
+                data = load_json(cache_path)
+                return data.get("summary")
+            except Exception as e:
+                logger.warning(f"Failed to load cache for {community_id}: {e}")
+        return None
+
+    def _save_to_cache(self, community_id: str, summary: str) -> None:
+        """Save summary to cache."""
+        cache_path = self._get_cache_path(community_id)
+        if cache_path:
+            try:
+                save_json({"community_id": community_id, "summary": summary}, cache_path)
+            except Exception as e:
+                logger.warning(f"Failed to save cache for {community_id}: {e}")
+
     def summarize_community(
         self,
         community: Community,
         kg: KnowledgeGraph,
+        use_cache: bool = True,
     ) -> str:
         """
         Generate a summary for a community.
@@ -164,10 +196,18 @@ class CommunitySummarizer:
         Args:
             community: Community to summarize
             kg: Knowledge graph
+            use_cache: Whether to use cached summaries if available
 
         Returns:
             Generated summary text
         """
+        # Check cache first
+        if use_cache:
+            cached_summary = self._load_from_cache(community.id)
+            if cached_summary:
+                logger.debug(f"Loaded summary from cache for {community.id}")
+                return cached_summary
+
         # Build context
         context = self._build_community_context(community, kg)
 
@@ -175,7 +215,13 @@ class CommunitySummarizer:
         prompt = COMMUNITY_SUMMARY_PROMPT.format(community_info=context)
 
         try:
-            response = self.llm.invoke(prompt)
+            result = ollama.generate(
+                model=self.model,
+                prompt=prompt,
+                options={"temperature": self.temperature, "num_predict": self.max_tokens},
+                think=False,  # Disable thinking mode for speed
+            )
+            response = result["response"]
             summary = strip_think_tags(response)
 
             # Clean up the summary
@@ -184,6 +230,11 @@ class CommunitySummarizer:
                 summary = summary[8:].strip()
 
             logger.debug(f"Generated summary for {community.id}: {len(summary)} chars")
+
+            # Save to cache
+            if use_cache:
+                self._save_to_cache(community.id, summary)
+
             return summary
 
         except Exception as e:
@@ -195,6 +246,7 @@ class CommunitySummarizer:
         communities: dict[str, Community],
         kg: KnowledgeGraph,
         show_progress: bool = True,
+        use_cache: bool = True,
     ) -> dict[str, Community]:
         """
         Generate summaries for all communities.
@@ -203,6 +255,7 @@ class CommunitySummarizer:
             communities: Dictionary of communities
             kg: Knowledge graph
             show_progress: Whether to show progress bar
+            use_cache: Whether to use cached summaries if available
 
         Returns:
             Communities with summaries added
@@ -214,6 +267,10 @@ class CommunitySummarizer:
             reverse=True,  # Start with larger communities at each level
         )
 
+        # Count cached summaries for progress reporting
+        cached_count = 0
+        generated_count = 0
+
         iterator = (
             tqdm(sorted_communities, desc="Summarizing communities")
             if show_progress
@@ -221,10 +278,25 @@ class CommunitySummarizer:
         )
 
         for community in iterator:
-            summary = self.summarize_community(community, kg)
+            # Check if we'll use cache (for stats)
+            was_cached = (
+                use_cache
+                and self.cache_dir
+                and self._load_from_cache(community.id) is not None
+            )
+
+            summary = self.summarize_community(community, kg, use_cache=use_cache)
             community.summary = summary
 
-        logger.info(f"Generated summaries for {len(communities)} communities")
+            if was_cached:
+                cached_count += 1
+            else:
+                generated_count += 1
+
+        logger.info(
+            f"Summarized {len(communities)} communities "
+            f"({cached_count} from cache, {generated_count} generated)"
+        )
         return communities
 
 
@@ -245,10 +317,14 @@ def load_community_summaries(path: Path) -> dict[str, Community]:
 
 def create_summarizer(cfg) -> CommunitySummarizer:
     """Create a CommunitySummarizer from config."""
+    # Set up cache directory
+    cache_dir = Path(cfg.PATHS.graph_db_dir) / "summary_cache"
+
     return CommunitySummarizer(
         model=cfg.SUMMARIZATION.model,
         max_tokens=cfg.SUMMARIZATION.max_tokens,
         temperature=cfg.SUMMARIZATION.temperature,
         include_entity_descriptions=cfg.SUMMARIZATION.include_entity_descriptions,
         include_relationships=cfg.SUMMARIZATION.include_relationships,
+        cache_dir=cache_dir,
     )
