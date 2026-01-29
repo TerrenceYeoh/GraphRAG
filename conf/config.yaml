@@ -24,7 +24,7 @@ DOCUMENT:
 
 # Entity Extraction
 EXTRACTION:
-  model: "qwen2.5:14b"
+  model: "qwen3:14b"
   embedding_model: "nomic-embed-text"
   entity_types:
     # Core entities
@@ -65,7 +65,7 @@ COMMUNITY:
 
 # Community Summarization
 SUMMARIZATION:
-  model: "qwen2.5:14b"
+  model: "qwen3:14b"
   max_tokens: 500
   temperature: 0.3
   include_entity_descriptions: true
@@ -77,19 +77,16 @@ RETRIEVAL:
   local_search_hops: 2
   local_max_entities: 25
   local_max_edges: 50
+  local_max_source_chunks: 5  # Maximum source document chunks to include in context
   local_include_community_context: true
 
   # Global search (community-based)
   global_top_communities: 8
-  global_map_reduce: true
-
-  # Hybrid
-  default_mode: "auto"  # auto, local, global
-  auto_threshold: 0.7   # Confidence threshold for mode selection
 
 # LLM Generation
 GENERATION:
-  model: "qwen2.5:14b"
+  provider: "anthropic"  # "ollama" or "anthropic"
+  model: "claude-3-5-haiku-latest"
   temperature: 0.5
   max_tokens: 1024
   top_k: 5
