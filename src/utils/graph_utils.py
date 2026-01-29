@@ -186,6 +186,35 @@ def merge_entities(entities: list[Entity]) -> list[Entity]:
     return list(entity_map.values())
 
 
+def load_chunk_texts(chunk_ids: list[str], cache_dir: Path) -> dict[str, str]:
+    """
+    Load source texts for given chunk IDs from extraction cache.
+
+    Args:
+        chunk_ids: List of chunk IDs to load
+        cache_dir: Path to extraction cache directory
+
+    Returns:
+        Dictionary mapping chunk_id to source_text
+    """
+    chunk_texts = {}
+    for chunk_id in chunk_ids:
+        if not chunk_id:
+            continue
+        cache_path = cache_dir / f"{chunk_id}.json"
+        if cache_path.exists():
+            try:
+                data = load_json(cache_path)
+                source_text = data.get("source_text", "")
+                if source_text:
+                    chunk_texts[chunk_id] = source_text
+            except Exception as e:
+                logger.warning(f"Failed to load chunk {chunk_id}: {e}")
+        else:
+            logger.debug(f"Cache file not found for chunk {chunk_id}")
+    return chunk_texts
+
+
 def merge_relationships(relationships: list[Relationship]) -> list[Relationship]:
     """Merge duplicate relationships, combining weights."""
     rel_map: dict[tuple[str, str, str], Relationship] = {}
