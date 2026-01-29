@@ -10,7 +10,7 @@ import json
 import re
 from pathlib import Path
 
-from langchain_ollama import OllamaLLM
+import ollama
 from loguru import logger
 from tqdm import tqdm
 
@@ -19,7 +19,8 @@ from src.utils.graph_utils import (Entity, ExtractionResult, Relationship,
                                    merge_relationships, save_json,
                                    strip_think_tags)
 
-ENTITY_EXTRACTION_PROMPT = """You are an expert at extracting structured information from text.
+ENTITY_EXTRACTION_PROMPT = """/no_think
+You are an expert at extracting structured information from text.
 
 Given the following text, extract all entities and relationships between them.
 
@@ -197,11 +198,6 @@ class EntityExtractor:
         self.temperature = temperature
         self.cache_dir = cache_dir
 
-        self.llm = OllamaLLM(
-            model=model,
-            temperature=temperature,
-        )
-
         logger.info(f"Initialized EntityExtractor with model: {model}")
 
     def _get_cache_path(self, chunk_id: str) -> Path | None:
@@ -258,9 +254,15 @@ class EntityExtractor:
             text=text,
         )
 
-        # Call LLM
+        # Call LLM with thinking disabled for speed
         try:
-            response = self.llm.invoke(prompt)
+            result = ollama.generate(
+                model=self.model,
+                prompt=prompt,
+                options={"temperature": self.temperature},
+                think=False,  # Disable thinking mode for faster extraction
+            )
+            response = result["response"]
             parsed = extract_json_from_response(response)
         except Exception as e:
             logger.error(f"LLM extraction failed for chunk {chunk_id}: {e}")
@@ -307,7 +309,7 @@ class EntityExtractor:
         result = ExtractionResult(
             entities=entities,
             relationships=relationships,
-            source_text=text[:500] + "..." if len(text) > 500 else text,
+            source_text=text,  # Store full chunk text for retrieval at query time
             chunk_id=chunk_id,
         )
 
@@ -338,17 +340,42 @@ class EntityExtractor:
             List of ExtractionResult objects
         """
         results = []
-        iterator = tqdm(chunks, desc="Extracting entities") if show_progress else chunks
+        cached_count = 0
+        generated_count = 0
+
+        # Create progress bar with dynamic description
+        pbar = tqdm(chunks, desc="Extracting entities") if show_progress else None
+        iterator = pbar if pbar else chunks
 
         for chunk_id, text in iterator:
+            # Check if this chunk will be loaded from cache
+            is_cached = (
+                use_cache
+                and chunk_id
+                and self._get_cache_path(chunk_id)
+                and self._get_cache_path(chunk_id).exists()
+            )
+
             result = self.extract_from_chunk(text, chunk_id, use_cache)
             results.append(result)
+
+            if is_cached:
+                cached_count += 1
+            else:
+                generated_count += 1
+
+            # Update progress bar description with cache stats
+            if pbar:
+                pbar.set_description(
+                    f"Extracting (cached: {cached_count}, new: {generated_count})"
+                )
 
         # Log summary
         total_entities = sum(len(r.entities) for r in results)
         total_relationships = sum(len(r.relationships) for r in results)
         logger.info(
-            f"Extraction complete: {total_entities} entities, {total_relationships} relationships from {len(chunks)} chunks"
+            f"Extraction complete: {total_entities} entities, {total_relationships} relationships "
+            f"from {len(chunks)} chunks ({cached_count} cached, {generated_count} generated)"
         )
 
         return results
