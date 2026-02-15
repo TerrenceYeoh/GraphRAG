@@ -85,8 +85,8 @@ RETRIEVAL:
 
 # LLM Generation
 GENERATION:
-  provider: "anthropic"  # "ollama" or "anthropic"
-  model: "claude-3-5-haiku-latest"
+  provider: "ollama"  # "ollama" or "anthropic"
+  model: "qwen3:14b"
   temperature: 0.5
   max_tokens: 1024
   top_k: 5
